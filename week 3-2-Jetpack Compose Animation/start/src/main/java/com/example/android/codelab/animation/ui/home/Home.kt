@@ -27,7 +27,6 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDp
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.calculateTargetValue
 import androidx.compose.animation.core.infiniteRepeatable
@@ -180,10 +179,7 @@ fun Home() {
     val lazyListState = rememberLazyListState()
 
     // The background color. The value is changed by the current tab.
-    val backgroundColor by animateColorAsState(
-        targetValue =
-        if (tabPage == TabPage.Home) Purple100 else Green300
-    )
+    val backgroundColor by animateColorAsState(if (tabPage == TabPage.Home) Purple100 else Green300)
 
     // The coroutine scope for event handlers calling suspend functions.
     val coroutineScope = rememberCoroutineScope()
@@ -298,7 +294,8 @@ private fun HomeFloatingActionButton(
             AnimatedVisibility(visible = extended) {
                 Text(
                     text = stringResource(R.string.edit),
-                    modifier = Modifier.padding(start = 8.dp, top = 3.dp)
+                    modifier = Modifier
+                        .padding(start = 8.dp, top = 3.dp)
                 )
             }
         }
@@ -314,12 +311,12 @@ private fun EditMessage(shown: Boolean) {
     AnimatedVisibility(
         visible = shown,
         enter = slideInVertically(
-            // Enters by sliding down from offset -fullHeight to 0.
+            // Enters by sliding in from offset -fullHeight to 0.
             initialOffsetY = { fullHeight -> -fullHeight },
             animationSpec = tween(durationMillis = 150, easing = LinearOutSlowInEasing)
         ),
         exit = slideOutVertically(
-            // Exits by sliding up from offset 0 to -fullHeight.
+            // Exits by sliding out from offset 0 to -fullHeight.
             targetOffsetY = { fullHeight -> -fullHeight },
             animationSpec = tween(durationMillis = 250, easing = FastOutLinearInEasing)
         )
@@ -395,6 +392,7 @@ private fun TopicRow(topic: String, expanded: Boolean, onClick: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
+                // This `Column` animates its size when its content changes.
                 .animateContentSize()
         ) {
             Row {
@@ -483,11 +481,11 @@ private fun HomeTabIndicator(
         transitionSpec = {
             if (TabPage.Home isTransitioningTo TabPage.Work) {
                 // Indicator moves to the right.
-                // The left edge moves slower than the right edge.
+                // Low stiffness spring for the left edge so it moves slower than the right edge.
                 spring(stiffness = Spring.StiffnessVeryLow)
             } else {
                 // Indicator moves to the left.
-                // The left edge moves faster than the right edge.
+                // Medium stiffness spring for the left edge so it moves faster than the right edge.
                 spring(stiffness = Spring.StiffnessMedium)
             }
         },
@@ -499,11 +497,11 @@ private fun HomeTabIndicator(
         transitionSpec = {
             if (TabPage.Home isTransitioningTo TabPage.Work) {
                 // Indicator moves to the right
-                // The right edge moves faster than the left edge.
+                // Medium stiffness spring for the right edge so it moves faster than the left edge.
                 spring(stiffness = Spring.StiffnessMedium)
             } else {
                 // Indicator moves to the left.
-                // The right edge moves slower than the left edge.
+                // Low stiffness spring for the right edge so it moves slower than the left edge.
                 spring(stiffness = Spring.StiffnessVeryLow)
             }
         },
@@ -600,15 +598,22 @@ private fun WeatherRow(
  */
 @Composable
 private fun LoadingRow() {
+    // Creates an `InfiniteTransition` that runs infinite child animation values.
     val infiniteTransition = rememberInfiniteTransition()
     val alpha by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
+        // `infiniteRepeatable` repeats the specified duration-based `AnimationSpec` infinitely.
         animationSpec = infiniteRepeatable(
+            // The `keyframes` animates the value by specifying multiple timestamps.
             animation = keyframes {
+                // One iteration is 1000 milliseconds.
                 durationMillis = 1000
+                // 0.7f at the middle of an iteration.
                 0.7f at 500
             },
+            // When the value finishes animating from 0f to 1f, it repeats by reversing the
+            // animation direction.
             repeatMode = RepeatMode.Reverse
         )
     )
@@ -665,7 +670,6 @@ private fun TaskRow(task: String, onRemove: () -> Unit) {
         }
     }
 }
-
 /**
  * The modified element can be horizontally swiped away.
  *
@@ -674,6 +678,7 @@ private fun TaskRow(task: String, onRemove: () -> Unit) {
 private fun Modifier.swipeToDismiss(
     onDismissed: () -> Unit
 ): Modifier = composed {
+    // This `Animatable` stores the horizontal offset for the element.
     val offsetX = remember { Animatable(0f) }
     pointerInput(Unit) {
         // Used to calculate a settling position of a fling animation.
@@ -683,14 +688,17 @@ private fun Modifier.swipeToDismiss(
             while (true) {
                 // Wait for a touch down event.
                 val pointerId = awaitPointerEventScope { awaitFirstDown().id }
+                // Interrupt any ongoing animation.
                 offsetX.stop()
                 // Prepare for drag events and record velocity of a fling.
                 val velocityTracker = VelocityTracker()
                 // Wait for drag events.
                 awaitPointerEventScope {
                     horizontalDrag(pointerId) { change ->
+                        // Record the position after offset
                         val horizontalDragOffset = offsetX.value + change.positionChange().x
                         launch {
+                            // Overwrite the `Animatable` value while the element is dragged.
                             offsetX.snapTo(horizontalDragOffset)
                         }
                         // Record the velocity of the drag.
@@ -701,11 +709,16 @@ private fun Modifier.swipeToDismiss(
                 }
                 // Dragging finished. Calculate the velocity of the fling.
                 val velocity = velocityTracker.calculateVelocity().x
+                // Calculate where the element eventually settles after the fling animation.
                 val targetOffsetX = decay.calculateTargetValue(offsetX.value, velocity)
-
+                // The animation should end as soon as it reaches these bounds.
+                offsetX.updateBounds(
+                    lowerBound = -size.width.toFloat(),
+                    upperBound = size.width.toFloat()
+                )
                 launch {
                     if (targetOffsetX.absoluteValue <= size.width) {
-                        // Not enough velocity; Slide back.
+                        // Not enough velocity; Slide back to the default position.
                         offsetX.animateTo(targetValue = 0f, initialVelocity = velocity)
                     } else {
                         // Enough velocity to slide away the element to the edge.
@@ -717,6 +730,7 @@ private fun Modifier.swipeToDismiss(
             }
         }
     }
+        // Apply the horizontal offset to the element.
         .offset { IntOffset(offsetX.value.roundToInt(), 0) }
 }
 
